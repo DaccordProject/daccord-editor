@@ -1,0 +1,11 @@
+# Godot
+.godot/
+*.import
+
+# Build artifacts
+export/bin/
+export/*.daccord-plugin
+
+# OS
+.DS_Store
+Thumbs.db
