@@ -1,14 +1,15 @@
 extends Control
 
 ## daccord-editor: Plugin development harness.
-## Loads a scripted plugin ELF or .daccord-plugin bundle and runs it
-## locally with action loopback (no server required).
+## Loads a scripted plugin (.sgd source, .elf binary, or .daccord-plugin
+## bundle) and runs it locally with action loopback (no server required).
 
 const DEFAULT_CANVAS_SIZE := Vector2i(640, 480)
 
 var _runtime: ScriptedRuntime
 var _loaded_path: String = ""
 var _elf_data: PackedByteArray
+var _sgd_source: String = ""
 var _manifest: Dictionary = {}
 
 # Virtual participants for testing
@@ -82,16 +83,20 @@ func _load_plugin(path: String) -> void:
 		_canvas_rect.texture = null
 
 	_elf_data = PackedByteArray()
+	_sgd_source = ""
 	_manifest = {}
 
 	if path.ends_with(".daccord-plugin"):
 		if not _load_bundle(path):
 			return
+	elif path.ends_with(".sgd"):
+		if not _load_sgd(path):
+			return
 	elif path.ends_with(".elf"):
 		if not _load_elf(path):
 			return
 	else:
-		_set_status("Unsupported file type. Use .daccord-plugin or .elf")
+		_set_status("Unsupported file type. Use .daccord-plugin, .sgd, or .elf")
 		return
 
 	_loaded_path = path
@@ -118,11 +123,33 @@ func _load_bundle(path: String) -> bool:
 	else:
 		_manifest = {}
 
-	# Read ELF
-	if reader.file_exists("bin/plugin.elf"):
+	# Determine format: SGD (source) or ELF (compiled)
+	var fmt: String = str(_manifest.get("format", ""))
+	var entry: String = str(_manifest.get("entry", ""))
+
+	if fmt == "sgd" or (entry.ends_with(".sgd") and reader.file_exists(entry)):
+		# SGD bundle — load source + gdscript.elf runtime
+		var sgd_path: String = entry if entry != "" else "src/main.sgd"
+		if reader.file_exists(sgd_path):
+			_sgd_source = reader.read_file(sgd_path).get_string_from_utf8()
+		else:
+			_set_status("Bundle missing %s" % sgd_path)
+			reader.close()
+			return false
+		# Load gdscript.elf runtime from addons
+		var elf_path := "res://addons/godot_sandbox/gdscript.elf"
+		var elf_file := FileAccess.open(elf_path, FileAccess.READ)
+		if elf_file == null:
+			_set_status("Missing gdscript.elf runtime in addons/godot_sandbox/")
+			reader.close()
+			return false
+		_elf_data = elf_file.get_buffer(elf_file.get_length())
+		elf_file.close()
+	elif reader.file_exists("bin/plugin.elf"):
+		# Legacy ELF bundle
 		_elf_data = reader.read_file("bin/plugin.elf")
 	else:
-		_set_status("Bundle missing bin/plugin.elf")
+		_set_status("Bundle missing entry file (src/main.sgd or bin/plugin.elf)")
 		reader.close()
 		return false
 
@@ -139,6 +166,31 @@ func _load_elf(path: String) -> bool:
 	file.close()
 	_manifest = {
 		"id": path.get_file().get_basename(),
+		"canvas_size": [DEFAULT_CANVAS_SIZE.x, DEFAULT_CANVAS_SIZE.y],
+	}
+	return true
+
+
+func _load_sgd(path: String) -> bool:
+	var src_file := FileAccess.open(path, FileAccess.READ)
+	if src_file == null:
+		_set_status("Failed to open: %s" % error_string(FileAccess.get_open_error()))
+		return false
+	_sgd_source = src_file.get_as_text()
+	src_file.close()
+
+	# Load gdscript.elf runtime from addons
+	var elf_path := "res://addons/godot_sandbox/gdscript.elf"
+	var elf_file := FileAccess.open(elf_path, FileAccess.READ)
+	if elf_file == null:
+		_set_status("Missing gdscript.elf runtime in addons/godot_sandbox/")
+		return false
+	_elf_data = elf_file.get_buffer(elf_file.get_length())
+	elf_file.close()
+
+	_manifest = {
+		"id": path.get_file().get_basename(),
+		"format": "sgd",
 		"canvas_size": [DEFAULT_CANVAS_SIZE.x, DEFAULT_CANVAS_SIZE.y],
 	}
 	return true
@@ -162,7 +214,7 @@ func _start_runtime() -> void:
 
 	_runtime.runtime_error.connect(_on_runtime_error)
 
-	var ok := _runtime.start(_elf_data, _manifest)
+	var ok := _runtime.start(_elf_data, _manifest, _sgd_source)
 	if not ok:
 		_set_status("Runtime failed to start.")
 		return

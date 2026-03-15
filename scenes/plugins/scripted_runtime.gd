@@ -42,8 +42,11 @@ func _ready() -> void:
 
 
 ## Starts the scripted runtime with the given ELF binary and manifest.
+## When sgd_source is non-empty, elf_data should be the gdscript.elf
+## runtime and the source will be passed to it after loading.
 func start(
 	elf_data: PackedByteArray, manifest: Dictionary,
+	sgd_source: String = "",
 ) -> bool:
 	if _running:
 		stop()
@@ -105,6 +108,20 @@ func start(
 		runtime_error.emit(msg)
 		_cleanup()
 		return false
+
+	# For SGD (SafeGDScript) plugins, pass the source to the
+	# gdscript.elf runtime so it can compile and execute it.
+	if sgd_source != "":
+		if _sandbox.has_method("has_function") \
+				and _sandbox.has_function("load_script"):
+			_sandbox.vmcall("load_script", sgd_source)
+		else:
+			push_warning(
+				"[ScriptedRuntime] gdscript.elf does not expose "
+				+ "load_script — falling back to set property."
+			)
+			if "script_source" in _sandbox:
+				_sandbox.script_source = sgd_source
 
 	_register_bridge_api()
 	_vmcall_safe("_ready")

@@ -3,6 +3,8 @@
   "name": "Codenames",
   "type": "activity",
   "runtime": "scripted",
+  "format": "sgd",
+  "entry": "src/main.sgd",
   "description": "Give clues. Guess words. Find your agents before the other team.",
   "version": "1.0.0",
   "canvas_size": [640, 480],
