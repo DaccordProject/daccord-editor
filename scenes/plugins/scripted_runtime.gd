@@ -1,9 +1,9 @@
 class_name ScriptedRuntime
 extends Node
 
-## Loads a scripted plugin's ELF binary into a godot-sandbox Sandbox
-## node, renders into a SubViewport via PluginCanvas, and exposes a
-## Plugin.* bridge API that the sandboxed code can call.
+## Loads an SGD (SafeGDScript) plugin into a godot-sandbox Sandbox node,
+## renders into a SubViewport via PluginCanvas, and exposes a Plugin.*
+## bridge API that the sandboxed code can call.
 
 signal runtime_error(message: String)
 
@@ -41,10 +41,9 @@ func _ready() -> void:
 	set_process(false)
 
 
-## Starts the scripted runtime with the given ELF binary and manifest.
-func start(
-	elf_data: PackedByteArray, manifest: Dictionary,
-) -> bool:
+## Starts the scripted runtime with the given SGD source and manifest.
+## Loads gdscript.elf from addons/godot_sandbox/ as the sandbox runtime.
+func start(sgd_source: String, manifest: Dictionary) -> bool:
 	if _running:
 		stop()
 
@@ -97,6 +96,18 @@ func start(
 	if "execution_timeout" in _sandbox:
 		_sandbox.execution_timeout = EXECUTION_TIMEOUT
 
+	# Load the gdscript.elf runtime from addons
+	var elf_path := "res://addons/godot_sandbox/gdscript.elf"
+	var elf_file := FileAccess.open(elf_path, FileAccess.READ)
+	if elf_file == null:
+		var msg := "Missing gdscript.elf in addons/godot_sandbox/"
+		push_error("[ScriptedRuntime] " + msg)
+		runtime_error.emit(msg)
+		_cleanup()
+		return false
+	var elf_data := elf_file.get_buffer(elf_file.get_length())
+	elf_file.close()
+
 	if _sandbox.has_method("load_buffer"):
 		_sandbox.load_buffer(elf_data)
 	else:
@@ -105,6 +116,13 @@ func start(
 		runtime_error.emit(msg)
 		_cleanup()
 		return false
+
+	# Pass the SGD source to the gdscript.elf runtime
+	if _sandbox.has_method("has_function") \
+			and _sandbox.has_function("load_script"):
+		_sandbox.vmcall("load_script", sgd_source)
+	elif "script_source" in _sandbox:
+		_sandbox.script_source = sgd_source
 
 	_register_bridge_api()
 	_vmcall_safe("_ready")
@@ -200,12 +218,11 @@ func forward_input(event: InputEvent) -> void:
 # --- Bridge API registration ---
 
 func _register_bridge_api() -> void:
-	# Only push the API dict if the guest ELF exposes _set_api in its
-	# public API.  Older / minimal plugins may not define it.
+	# Only push the API dict if the plugin exposes _set_api.
 	if _sandbox != null and _sandbox.has_method("has_function") \
 			and not _sandbox.has_function("_set_api"):
 		push_warning(
-			"[ScriptedRuntime] ELF has no _set_api — bridge API "
+			"[ScriptedRuntime] Plugin has no _set_api — bridge API "
 			+ "not injected. Plugin may have limited functionality."
 		)
 		return

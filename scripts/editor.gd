@@ -1,14 +1,14 @@
 extends Control
 
 ## daccord-editor: Plugin development harness.
-## Loads a scripted plugin ELF or .daccord-plugin bundle and runs it
-## locally with action loopback (no server required).
+## Loads an SGD plugin (.sgd source or .daccord-plugin bundle) and runs
+## it locally with action loopback (no server required).
 
 const DEFAULT_CANVAS_SIZE := Vector2i(640, 480)
 
 var _runtime: ScriptedRuntime
 var _loaded_path: String = ""
-var _elf_data: PackedByteArray
+var _sgd_source: String = ""
 var _manifest: Dictionary = {}
 
 # Virtual participants for testing
@@ -81,17 +81,17 @@ func _load_plugin(path: String) -> void:
 		_runtime = null
 		_canvas_rect.texture = null
 
-	_elf_data = PackedByteArray()
+	_sgd_source = ""
 	_manifest = {}
 
 	if path.ends_with(".daccord-plugin"):
 		if not _load_bundle(path):
 			return
-	elif path.ends_with(".elf"):
-		if not _load_elf(path):
+	elif path.ends_with(".sgd"):
+		if not _load_sgd(path):
 			return
 	else:
-		_set_status("Unsupported file type. Use .daccord-plugin or .elf")
+		_set_status("Unsupported file type. Use .daccord-plugin or .sgd")
 		return
 
 	_loaded_path = path
@@ -118,11 +118,12 @@ func _load_bundle(path: String) -> bool:
 	else:
 		_manifest = {}
 
-	# Read ELF
-	if reader.file_exists("bin/plugin.elf"):
-		_elf_data = reader.read_file("bin/plugin.elf")
+	# Load the SGD source from the bundle
+	var entry: String = str(_manifest.get("entry", "src/main.sgd"))
+	if reader.file_exists(entry):
+		_sgd_source = reader.read_file(entry).get_string_from_utf8()
 	else:
-		_set_status("Bundle missing bin/plugin.elf")
+		_set_status("Bundle missing %s" % entry)
 		reader.close()
 		return false
 
@@ -130,15 +131,17 @@ func _load_bundle(path: String) -> bool:
 	return true
 
 
-func _load_elf(path: String) -> bool:
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
+func _load_sgd(path: String) -> bool:
+	var src_file := FileAccess.open(path, FileAccess.READ)
+	if src_file == null:
 		_set_status("Failed to open: %s" % error_string(FileAccess.get_open_error()))
 		return false
-	_elf_data = file.get_buffer(file.get_length())
-	file.close()
+	_sgd_source = src_file.get_as_text()
+	src_file.close()
+
 	_manifest = {
 		"id": path.get_file().get_basename(),
+		"format": "sgd",
 		"canvas_size": [DEFAULT_CANVAS_SIZE.x, DEFAULT_CANVAS_SIZE.y],
 	}
 	return true
@@ -162,7 +165,7 @@ func _start_runtime() -> void:
 
 	_runtime.runtime_error.connect(_on_runtime_error)
 
-	var ok := _runtime.start(_elf_data, _manifest)
+	var ok := _runtime.start(_sgd_source, _manifest)
 	if not ok:
 		_set_status("Runtime failed to start.")
 		return

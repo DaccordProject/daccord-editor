@@ -21,7 +21,7 @@ Two teams (red and blue) compete to identify their agents on a 5×5 grid of word
 
 ## Technical details
 
-- **Runtime**: Scripted plugin (`main.gd`) running in daccord's Godot-based sandbox
+- **Format**: SGD (SafeGDScript) — plain GDScript source in `.sgd` files, executed by `gdscript.elf` in the sandbox
 - **Canvas**: 640×480
 - **Max players**: 8 (unlimited spectators)
 - **Sync model**: The host generates the board and broadcasts it. All clients apply actions deterministically to stay in sync.
@@ -29,11 +29,18 @@ Two teams (red and blue) compete to identify their agents on a 5×5 grid of word
 ## Project structure
 
 ```
-├── plugin.json      # Plugin metadata (id, type, canvas size, etc.)
-├── project.godot    # Godot engine config
+├── plugin.json      # Plugin metadata (id, format, entry point, canvas size, etc.)
 ├── src/
-│   └── main.gd      # All game logic, rendering, and input handling
-├── assets/          # Game assets
-├── export/          # Export templates
-└── build.sh         # Build script
+│   └── main.sgd     # All game logic, rendering, and input handling
+├── assets/          # Game assets (if any)
+├── export/          # Build output
+└── build.sh         # Build & packaging script
 ```
+
+## Building
+
+```bash
+./build.sh           # Creates export/codenames.daccord-plugin
+```
+
+The `.daccord-plugin` bundle is a ZIP containing `plugin.json` and the `.sgd` source file. No compilation step is required — the daccord runtime uses `gdscript.elf` from `addons/godot_sandbox/` to execute the GDScript source directly in the sandbox.
