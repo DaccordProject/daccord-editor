@@ -28,6 +28,8 @@ var _active_user_index: int = 0
 @onready var _switch_user_btn: Button = %SwitchUserBtn
 @onready var _action_log: RichTextLabel = %ActionLog
 @onready var _status_label: Label = %StatusLabel
+@onready var _browse_btn: Button = %BrowseBtn
+@onready var _file_dialog: FileDialog = %FileDialog
 
 
 func _ready() -> void:
@@ -36,6 +38,8 @@ func _ready() -> void:
 	_add_user_btn.pressed.connect(_on_add_user_pressed)
 	_switch_user_btn.pressed.connect(_on_switch_user_pressed)
 	_canvas_rect.gui_input.connect(_on_canvas_input)
+	_browse_btn.pressed.connect(_on_browse_pressed)
+	_file_dialog.file_selected.connect(_on_file_selected)
 
 	_refresh_user_list()
 	_set_status("Ready. Load a plugin to begin.")
@@ -44,6 +48,15 @@ func _ready() -> void:
 # ---------------------------------------------------------------------------
 # Plugin loading
 # ---------------------------------------------------------------------------
+
+func _on_browse_pressed() -> void:
+	_file_dialog.popup_centered()
+
+
+func _on_file_selected(path: String) -> void:
+	_path_field.text = path
+	_load_plugin(path)
+
 
 func _on_load_pressed() -> void:
 	var path: String = _path_field.text.strip_edges()

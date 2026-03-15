@@ -10,8 +10,8 @@ cd "$(dirname "$0")"
 
 EXPORT_DIR="export"
 BUNDLE_NAME="codenames.daccord-plugin"
-GODOT_SANDBOX_REPO="libriscv/godot-sandbox"
-GODOT_SANDBOX_TAG="v0.48"
+GODOT_SANDBOX_REPO="krazyjakee/godot-sandbox"
+GODOT_SANDBOX_TAG="v0.49"
 
 if [[ "${1:-}" == "compile" ]]; then
     echo "==> Compiling GDScript to RISC-V ELF via godot-sandbox..."
