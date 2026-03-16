@@ -2,6 +2,7 @@
   "id": "battleships",
   "name": "Battleships",
   "type": "activity",
+  "runtime": "scripted",
   "format": "lua",
   "entry": "src/main.lua",
   "description": "Place your fleet. Take turns firing. Sink all enemy ships to win.",

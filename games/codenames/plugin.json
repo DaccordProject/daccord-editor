@@ -2,6 +2,7 @@
   "id": "codenames",
   "name": "Codenames",
   "type": "activity",
+  "runtime": "scripted",
   "format": "lua",
   "entry": "src/main.lua",
   "description": "Give clues. Guess words. Find your agents before the other team.",
