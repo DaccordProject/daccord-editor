@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and package the Codenames plugin.
+# Build and package the Battleships plugin.
 #
 # Usage:
 #   ./build.sh           # Package plugin (bundles .lua source + plugin.json)
@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 EXPORT_DIR="export"
-BUNDLE_NAME="codenames.daccord-plugin"
+BUNDLE_NAME="battleships.daccord-plugin"
 
 echo "==> Packaging ${BUNDLE_NAME}..."
 

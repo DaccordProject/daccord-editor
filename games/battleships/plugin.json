@@ -1,0 +1,14 @@
+{
+  "id": "battleships",
+  "name": "Battleships",
+  "type": "activity",
+  "format": "lua",
+  "entry": "src/main.lua",
+  "description": "Place your fleet. Take turns firing. Sink all enemy ships to win.",
+  "version": "1.0.0",
+  "canvas_size": [640, 480],
+  "max_participants": 2,
+  "max_spectators": -1,
+  "lobby": true,
+  "permissions": []
+}

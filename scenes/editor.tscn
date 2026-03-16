@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3 uid="uid://editor_main"]
+[gd_scene load_steps=2 format=3 uid="uid://ci2dp3drs4hta"]
 
-[ext_resource type="Script" path="res://scripts/editor.gd" id="1_editor"]
+[ext_resource type="Script" uid="uid://bempkwnsddycu" path="res://scripts/editor.gd" id="1_editor"]
 
 [node name="Editor" type="Control"]
 layout_mode = 3
@@ -20,19 +20,20 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="CanvasPanel" type="PanelContainer" parent="HSplit"]
-layout_mode = 2
 custom_minimum_size = Vector2(640, 480)
+layout_mode = 2
 
 [node name="CanvasRect" type="TextureRect" parent="HSplit/CanvasPanel"]
 unique_name_in_owner = true
 layout_mode = 2
+mouse_filter = 0
+focus_mode = 2
 expand_mode = 1
 stretch_mode = 5
-mouse_filter = 0
 
 [node name="RightPanel" type="VBoxContainer" parent="HSplit"]
-layout_mode = 2
 custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
 
 [node name="LoadSection" type="VBoxContainer" parent="HSplit/RightPanel"]
 layout_mode = 2
@@ -44,7 +45,7 @@ text = "Plugin"
 [node name="PathField" type="LineEdit" parent="HSplit/RightPanel/LoadSection"]
 unique_name_in_owner = true
 layout_mode = 2
-placeholder_text = "/path/to/plugin.daccord-plugin or .elf"
+placeholder_text = "/path/to/plugin.daccord-plugin or .lua"
 
 [node name="ButtonRow" type="HBoxContainer" parent="HSplit/RightPanel/LoadSection"]
 layout_mode = 2
@@ -64,15 +65,6 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Browse..."
 
-[node name="FileDialog" type="FileDialog" parent="."]
-unique_name_in_owner = true
-title = "Open Plugin"
-size = Vector2i(800, 500)
-ok_button_text = "Open"
-file_mode = 0
-access = 2
-filters = PackedStringArray("*.daccord-plugin ; daccord Plugin Bundles", "*.gd ; GDScript Files", "*.elf ; Compiled ELF Binaries")
-
 [node name="Sep1" type="HSeparator" parent="HSplit/RightPanel"]
 layout_mode = 2
 
@@ -85,8 +77,8 @@ text = "Users"
 
 [node name="UserList" type="ItemList" parent="HSplit/RightPanel/UserSection"]
 unique_name_in_owner = true
-layout_mode = 2
 custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
 
 [node name="UserBtnRow" type="HBoxContainer" parent="HSplit/RightPanel/UserSection"]
 layout_mode = 2
@@ -101,30 +93,22 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Switch To Selected"
 
-[node name="Sep2" type="HSeparator" parent="HSplit/RightPanel"]
-layout_mode = 2
-
-[node name="LogSection" type="VBoxContainer" parent="HSplit/RightPanel"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="LogLabel" type="Label" parent="HSplit/RightPanel/LogSection"]
-layout_mode = 2
-text = "Action Log"
-
-[node name="LogScroll" type="ScrollContainer" parent="HSplit/RightPanel/LogSection"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="ActionLog" type="RichTextLabel" parent="HSplit/RightPanel/LogSection/LogScroll"]
+[node name="NextUserBtn" type="Button" parent="HSplit/RightPanel/UserSection/UserBtnRow"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-fit_content = true
-scroll_active = false
+text = "Next Player"
 
 [node name="StatusLabel" type="Label" parent="HSplit/RightPanel"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Ready."
+
+[node name="FileDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Open a File"
+size = Vector2i(800, 500)
+ok_button_text = "Open"
+file_mode = 0
+access = 2
+use_native_dialog = true
+filters = PackedStringArray("*.daccord-plugin ; daccord Plugin Bundles", "*.lua ; Lua Scripts")

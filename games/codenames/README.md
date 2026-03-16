@@ -21,7 +21,7 @@ Two teams (red and blue) compete to identify their agents on a 5×5 grid of word
 
 ## Technical details
 
-- **Format**: SGD (SafeGDScript) — plain GDScript source in `.sgd` files, executed by `gdscript.elf` in the sandbox
+- **Format**: Lua — executed in a sandboxed LuaState via [lua-gdextension](https://github.com/gilzoide/lua-gdextension)
 - **Canvas**: 640×480
 - **Max players**: 8 (unlimited spectators)
 - **Sync model**: The host generates the board and broadcasts it. All clients apply actions deterministically to stay in sync.
@@ -31,7 +31,7 @@ Two teams (red and blue) compete to identify their agents on a 5×5 grid of word
 ```
 ├── plugin.json      # Plugin metadata (id, format, entry point, canvas size, etc.)
 ├── src/
-│   └── main.sgd     # All game logic, rendering, and input handling
+│   └── main.lua     # All game logic, rendering, and input handling
 ├── assets/          # Game assets (if any)
 ├── export/          # Build output
 └── build.sh         # Build & packaging script
@@ -43,4 +43,4 @@ Two teams (red and blue) compete to identify their agents on a 5×5 grid of word
 ./build.sh           # Creates export/codenames.daccord-plugin
 ```
 
-The `.daccord-plugin` bundle is a ZIP containing `plugin.json` and the `.sgd` source file. No compilation step is required — the daccord runtime uses `gdscript.elf` from `addons/godot_sandbox/` to execute the GDScript source directly in the sandbox.
+The `.daccord-plugin` bundle is a ZIP containing `plugin.json` and the `.lua` source file. No compilation step is required — the daccord runtime creates a sandboxed LuaState and executes the Lua source directly.

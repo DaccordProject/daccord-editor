@@ -1,15 +1,17 @@
 extends Control
 
 ## daccord-editor: Plugin development harness.
-## Loads an SGD plugin (.sgd source or .daccord-plugin bundle) and runs
+## Loads a Lua plugin (.lua source or .daccord-plugin bundle) and runs
 ## it locally with action loopback (no server required).
 
 const DEFAULT_CANVAS_SIZE := Vector2i(640, 480)
 
 var _runtime: ScriptedRuntime
 var _loaded_path: String = ""
-var _sgd_source: String = ""
+var _lua_source: String = ""
 var _manifest: Dictionary = {}
+var _assets: Dictionary = {}  # path -> PackedByteArray
+var _modules: Dictionary = {}  # module_name -> lua source string
 
 # Virtual participants for testing
 var _users: Array = [
@@ -26,7 +28,7 @@ var _active_user_index: int = 0
 @onready var _user_list: ItemList = %UserList
 @onready var _add_user_btn: Button = %AddUserBtn
 @onready var _switch_user_btn: Button = %SwitchUserBtn
-@onready var _action_log: RichTextLabel = %ActionLog
+@onready var _next_user_btn: Button = %NextUserBtn
 @onready var _status_label: Label = %StatusLabel
 @onready var _browse_btn: Button = %BrowseBtn
 @onready var _file_dialog: FileDialog = %FileDialog
@@ -37,12 +39,22 @@ func _ready() -> void:
 	_reload_btn.pressed.connect(_on_reload_pressed)
 	_add_user_btn.pressed.connect(_on_add_user_pressed)
 	_switch_user_btn.pressed.connect(_on_switch_user_pressed)
+	_next_user_btn.pressed.connect(_on_next_user_pressed)
 	_canvas_rect.gui_input.connect(_on_canvas_input)
 	_browse_btn.pressed.connect(_on_browse_pressed)
 	_file_dialog.file_selected.connect(_on_file_selected)
 
 	_refresh_user_list()
 	_set_status("Ready. Load a plugin to begin.")
+
+	# Auto-load plugin from --plugin <path> command-line argument
+	var args := OS.get_cmdline_user_args()
+	for i in range(args.size()):
+		if args[i] == "--plugin" and i + 1 < args.size():
+			var path: String = args[i + 1]
+			_path_field.text = path
+			_load_plugin(path)
+			break
 
 
 # ---------------------------------------------------------------------------
@@ -81,17 +93,19 @@ func _load_plugin(path: String) -> void:
 		_runtime = null
 		_canvas_rect.texture = null
 
-	_sgd_source = ""
+	_lua_source = ""
 	_manifest = {}
+	_assets = {}
+	_modules = {}
 
 	if path.ends_with(".daccord-plugin"):
 		if not _load_bundle(path):
 			return
-	elif path.ends_with(".sgd"):
-		if not _load_sgd(path):
+	elif path.ends_with(".lua"):
+		if not _load_lua(path):
 			return
 	else:
-		_set_status("Unsupported file type. Use .daccord-plugin or .sgd")
+		_set_status("Unsupported file type. Use .daccord-plugin or .lua")
 		return
 
 	_loaded_path = path
@@ -118,33 +132,90 @@ func _load_bundle(path: String) -> bool:
 	else:
 		_manifest = {}
 
-	# Load the SGD source from the bundle
-	var entry: String = str(_manifest.get("entry", "src/main.sgd"))
+	# Load the Lua source from the bundle
+	var entry: String = str(_manifest.get("entry", "src/main.lua"))
 	if reader.file_exists(entry):
-		_sgd_source = reader.read_file(entry).get_string_from_utf8()
+		_lua_source = reader.read_file(entry).get_string_from_utf8()
 	else:
 		_set_status("Bundle missing %s" % entry)
 		reader.close()
 		return false
 
+	# Extract assets/ files and sibling .lua modules from the bundle
+	for file_path in reader.get_files():
+		if file_path.begins_with("assets/"):
+			_assets[file_path] = reader.read_file(file_path)
+		elif file_path.ends_with(".lua") and file_path != entry:
+			var module_name: String = file_path.get_file().get_basename()
+			_modules[module_name] = reader.read_file(file_path).get_string_from_utf8()
+
 	reader.close()
 	return true
 
 
-func _load_sgd(path: String) -> bool:
+func _load_lua(path: String) -> bool:
 	var src_file := FileAccess.open(path, FileAccess.READ)
 	if src_file == null:
 		_set_status("Failed to open: %s" % error_string(FileAccess.get_open_error()))
 		return false
-	_sgd_source = src_file.get_as_text()
+	_lua_source = src_file.get_as_text()
 	src_file.close()
 
 	_manifest = {
 		"id": path.get_file().get_basename(),
-		"format": "sgd",
+		"format": "lua",
 		"canvas_size": [DEFAULT_CANVAS_SIZE.x, DEFAULT_CANVAS_SIZE.y],
 	}
+
+	# Load assets from assets/ directory next to or above the source file
+	# Structure: plugin_root/src/main.lua + plugin_root/assets/
+	var base_dir: String = path.get_base_dir()
+	var assets_dir: String = base_dir.path_join("assets")
+	if not DirAccess.dir_exists_absolute(assets_dir):
+		assets_dir = base_dir.get_base_dir().path_join("assets")
+	_load_assets_from_dir(assets_dir, "assets/")
+
+	# Load sibling .lua files as modules for require()
+	_load_lua_modules(base_dir, path.get_file())
+
 	return true
+
+
+func _load_lua_modules(src_dir: String, entry_filename: String) -> void:
+	var dir := DirAccess.open(src_dir)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		if not dir.current_is_dir() and name.ends_with(".lua") and name != entry_filename:
+			var full := src_dir.path_join(name)
+			var file := FileAccess.open(full, FileAccess.READ)
+			if file != null:
+				var module_name: String = name.get_basename()
+				_modules[module_name] = file.get_as_text()
+				file.close()
+		name = dir.get_next()
+	dir.list_dir_end()
+
+
+func _load_assets_from_dir(dir_path: String, prefix: String) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		var full := dir_path.path_join(name)
+		if dir.current_is_dir():
+			_load_assets_from_dir(full, prefix + name + "/")
+		else:
+			var file := FileAccess.open(full, FileAccess.READ)
+			if file != null:
+				_assets[prefix + name] = file.get_buffer(file.get_length())
+				file.close()
+		name = dir.get_next()
+	dir.list_dir_end()
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +229,10 @@ func _start_runtime() -> void:
 	# Set up user context
 	_apply_user_context()
 
+	# Pass bundled assets and module sources
+	_runtime._assets = _assets
+	_runtime._modules = _modules
+
 	# Wire up action loopback
 	var mock := MockClientPlugins.new()
 	mock._editor = self
@@ -165,7 +240,7 @@ func _start_runtime() -> void:
 
 	_runtime.runtime_error.connect(_on_runtime_error)
 
-	var ok := _runtime.start(_sgd_source, _manifest)
+	var ok := _runtime.start(_lua_source, _manifest)
 	if not ok:
 		_set_status("Runtime failed to start.")
 		return
@@ -177,7 +252,7 @@ func _start_runtime() -> void:
 
 	var plugin_name: String = _manifest.get("name", _manifest.get("id", "unknown"))
 	_set_status("Running: %s" % plugin_name)
-	_log_action("--- Plugin loaded: %s ---" % plugin_name)
+	print("[Plugin] Loaded: %s" % plugin_name)
 
 
 func _apply_user_context() -> void:
@@ -190,8 +265,8 @@ func _apply_user_context() -> void:
 
 
 func _on_runtime_error(message: String) -> void:
-	_set_status("Runtime error: %s" % message)
-	_log_action("[ERROR] %s" % message)
+	_set_status("Runtime error")
+	push_error("[Plugin] %s" % message)
 
 
 # ---------------------------------------------------------------------------
@@ -205,8 +280,6 @@ class MockClientPlugins:
 
 
 func _on_action_sent(data: Dictionary) -> void:
-	var action_name: String = str(data.get("action", "???"))
-	_log_action(">> %s: %s" % [action_name, str(data)])
 
 	# Loopback: deliver the action back to the plugin as a server event
 	if _runtime != null:
@@ -218,7 +291,10 @@ func _on_action_sent(data: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 
 func _on_canvas_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		print("[Input] gui_input MouseButton pressed=%s" % str(event.pressed))
 	if _runtime == null:
+		print("[Input] _runtime is null, dropping event")
 		return
 
 	# Remap coordinates to canvas space
@@ -229,19 +305,21 @@ func _on_canvas_input(event: InputEvent) -> void:
 	var rect_size: Vector2 = _canvas_rect.size
 
 	if event is InputEventMouse:
-		var scale_x: float = canvas_size.x / rect_size.x if rect_size.x > 0 else 1.0
-		var scale_y: float = canvas_size.y / rect_size.y if rect_size.y > 0 else 1.0
-		event = event.duplicate()
-		event.position = Vector2(
-			event.position.x * scale_x,
-			event.position.y * scale_y,
+		# Account for aspect-ratio-preserving stretch (KEEP_ASPECT_CENTERED)
+		var scale_factor: float = minf(
+			rect_size.x / canvas_size.x if canvas_size.x > 0 else 1.0,
+			rect_size.y / canvas_size.y if canvas_size.y > 0 else 1.0,
 		)
-		if event is InputEventMouseMotion:
-			event.relative = Vector2(
-				event.relative.x * scale_x,
-				event.relative.y * scale_y,
-			)
+		var display_size := canvas_size * scale_factor
+		var offset := (rect_size - display_size) * 0.5
 
+		event = event.duplicate()
+		event.position = (event.position - offset) / scale_factor
+		if event is InputEventMouseMotion:
+			event.relative = event.relative / scale_factor
+
+	if not _canvas_rect.has_focus():
+		_canvas_rect.grab_focus()
 	_runtime.forward_input(event)
 
 
@@ -282,7 +360,14 @@ func _on_switch_user_pressed() -> void:
 	_apply_user_context()
 	var user: Dictionary = _users[_active_user_index]
 	_set_status("Switched to: %s" % user["display_name"])
-	_log_action("--- Switched to %s (%s) ---" % [user["display_name"], user["user_id"]])
+
+
+func _on_next_user_pressed() -> void:
+	_active_user_index = (_active_user_index + 1) % _users.size()
+	_refresh_user_list()
+	_apply_user_context()
+	var user: Dictionary = _users[_active_user_index]
+	_set_status("Switched to: %s" % user["display_name"])
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +376,3 @@ func _on_switch_user_pressed() -> void:
 
 func _set_status(msg: String) -> void:
 	_status_label.text = msg
-
-
-func _log_action(msg: String) -> void:
-	_action_log.append_text(msg + "\n")

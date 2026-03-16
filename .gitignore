@@ -10,3 +10,5 @@ Thumbs.db
 *.o
 *.so
 *.dylib
+addons/lua-gdextension
+*.daccord-plugin

@@ -21,9 +21,13 @@ window/size/viewport_width=1060
 window/size/viewport_height=600
 window/stretch/mode="canvas_items"
 
+[editor]
+
+script/skip=true
+
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_sandbox/plugin.cfg")
+enabled=PackedStringArray("res://addons/lua-gdextension/plugin.cfg")
 
 [rendering]
 
