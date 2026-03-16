@@ -218,14 +218,6 @@ func forward_input(event: InputEvent) -> void:
 # --- Bridge API registration ---
 
 func _register_bridge_api() -> void:
-	# Only push the API dict if the plugin exposes _set_api.
-	if _sandbox != null and _sandbox.has_method("has_function") \
-			and not _sandbox.has_function("_set_api"):
-		push_warning(
-			"[ScriptedRuntime] Plugin has no _set_api — bridge API "
-			+ "not injected. Plugin may have limited functionality."
-		)
-		return
 	var api := _build_bridge_api()
 	_vmcall_safe("_set_api", api)
 
@@ -485,8 +477,6 @@ func _vmcall_safe(
 	arg1 = null, arg2 = null, arg3 = null,
 ) -> Variant:
 	if _sandbox == null or not _sandbox.has_method("vmcall"):
-		return null
-	if _sandbox.has_method("has_function") and not _sandbox.has_function(fn):
 		return null
 	if arg3 != null:
 		return _sandbox.vmcall(fn, arg1, arg2, arg3)
