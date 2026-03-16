@@ -21,7 +21,8 @@ The main scene is `scenes/editor.tscn`. No tests or linting are configured.
 ## Building plugins
 
 ```bash
-cd games/codenames && ./build.sh    # → export/codenames.daccord-plugin (ZIP bundle)
+./build.sh              # Build all games
+./build.sh codenames    # Build a specific game
 ```
 
 A `.daccord-plugin` is a ZIP containing `plugin.json` (metadata) and `src/main.lua` (source).
