@@ -105,6 +105,75 @@ function M.handle_new_game(data)
     S.init_grids()
 end
 
+-- Host responds to a state_request by sending the full game state so a
+-- rejoining player can resume mid-game.
+function M.handle_state_request(data)
+    if not S.is_host() then return end
+    local requester = tostring(data["user_id"] or "")
+    if requester == "" then return end
+
+    -- Build as a Lua table first, then convert to Dictionary for the bridge.
+    local t = {
+        action = "state_sync",
+        phase = S.phase,
+        player1 = S.player1,
+        player2 = S.player2,
+        current_turn = S.current_turn,
+        winner = S.winner,
+        last_hit_result = S.last_hit_result,
+        last_hit_row = S.last_hit_row,
+        last_hit_col = S.last_hit_col,
+    }
+
+    -- Serialize boards for all initialized players
+    for _, uid in ipairs({S.player1, S.player2}) do
+        if uid ~= "" and S.boards[uid] then
+            t["board_" .. uid] = S.serialize_board(S.boards[uid])
+            t["shots_" .. uid] = S.serialize_board(S.shots[uid])
+            t["incoming_" .. uid] = S.serialize_board(S.incoming[uid])
+            t["ship_ready_" .. uid] = S.ship_ready[uid] and 1 or 0
+            t["hits_dealt_" .. uid] = S.hits_dealt[uid] or 0
+            t["hits_taken_" .. uid] = S.hits_taken[uid] or 0
+        end
+    end
+
+    api.send_action(Dictionary(t))
+end
+
+-- Rejoining player restores full game state from a host snapshot.
+-- The host is the source of truth and must not overwrite its own state.
+function M.handle_state_sync(data)
+    if S.is_host() then return end
+    S.phase = tostring(data["phase"] or "lobby")
+    S.player1 = tostring(data["player1"] or "")
+    S.player2 = tostring(data["player2"] or "")
+    S.current_turn = math.floor(tonumber(data["current_turn"] or 1))
+    S.winner = tostring(data["winner"] or "")
+    S.last_hit_result = tostring(data["last_hit_result"] or "")
+    S.last_hit_row = math.floor(tonumber(data["last_hit_row"] or -1))
+    S.last_hit_col = math.floor(tonumber(data["last_hit_col"] or -1))
+
+    -- Restore per-player grids
+    for _, uid in ipairs({S.player1, S.player2}) do
+        if uid ~= "" then
+            local board_str = data["board_" .. uid]
+            if board_str then
+                S.boards[uid] = S.deserialize_board(board_str)
+                S.shots[uid] = S.deserialize_board(data["shots_" .. uid] or "")
+                S.incoming[uid] = S.deserialize_board(data["incoming_" .. uid] or "")
+                S.ship_ready[uid] = tonumber(data["ship_ready_" .. uid] or 0) == 1
+                S.hits_dealt[uid] = math.floor(tonumber(data["hits_dealt_" .. uid] or 0))
+                S.hits_taken[uid] = math.floor(tonumber(data["hits_taken_" .. uid] or 0))
+                S.ship_idx[uid] = #C.SHIPS + 1  -- placement complete
+                S.ship_dir[uid] = true
+                S.placed_list[uid] = {}
+            else
+                S.init_player(uid)
+            end
+        end
+    end
+end
+
 function M.dispatch(event_type, data)
     if event_type ~= "action" then return end
 
@@ -119,6 +188,10 @@ function M.dispatch(event_type, data)
         M.handle_fire(data)
     elseif action == "new_game" then
         M.handle_new_game(data)
+    elseif action == "state_request" then
+        M.handle_state_request(data)
+    elseif action == "state_sync" then
+        M.handle_state_sync(data)
     end
 end
 

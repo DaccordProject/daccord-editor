@@ -20,15 +20,20 @@ var _users: Array = [
 ]
 var _active_user_index: int = 0
 
+# Rejoin simulation state
+var _pending_rejoin: bool = false
+var _rejoin_state_sync: Dictionary = {}
+
 # UI references
 @onready var _canvas_rect: TextureRect = %CanvasRect
-@onready var _path_field: LineEdit = %PathField
+@onready var _plugin_dropdown: OptionButton = %PluginDropdown
 @onready var _load_btn: Button = %LoadBtn
 @onready var _reload_btn: Button = %ReloadBtn
 @onready var _user_list: ItemList = %UserList
 @onready var _add_user_btn: Button = %AddUserBtn
 @onready var _switch_user_btn: Button = %SwitchUserBtn
 @onready var _next_user_btn: Button = %NextUserBtn
+@onready var _simulate_rejoin_btn: Button = %SimulateRejoinBtn
 @onready var _status_label: Label = %StatusLabel
 @onready var _browse_btn: Button = %BrowseBtn
 @onready var _file_dialog: FileDialog = %FileDialog
@@ -40,10 +45,12 @@ func _ready() -> void:
 	_add_user_btn.pressed.connect(_on_add_user_pressed)
 	_switch_user_btn.pressed.connect(_on_switch_user_pressed)
 	_next_user_btn.pressed.connect(_on_next_user_pressed)
+	_simulate_rejoin_btn.pressed.connect(_on_simulate_rejoin_pressed)
 	_canvas_rect.gui_input.connect(_on_canvas_input)
 	_browse_btn.pressed.connect(_on_browse_pressed)
 	_file_dialog.file_selected.connect(_on_file_selected)
 
+	_populate_plugin_dropdown()
 	_refresh_user_list()
 	_set_status("Ready. Load a plugin to begin.")
 
@@ -52,7 +59,7 @@ func _ready() -> void:
 	for i in range(args.size()):
 		if args[i] == "--plugin" and i + 1 < args.size():
 			var path: String = args[i + 1]
-			_path_field.text = path
+			_select_dropdown_path(path)
 			_load_plugin(path)
 			break
 
@@ -61,19 +68,64 @@ func _ready() -> void:
 # Plugin loading
 # ---------------------------------------------------------------------------
 
+func _populate_plugin_dropdown() -> void:
+	_plugin_dropdown.clear()
+	_plugin_dropdown.add_item("-- Select a plugin --")
+	_plugin_dropdown.set_item_metadata(0, "")
+	var scan_dir := "res://games"
+	if not DirAccess.dir_exists_absolute(scan_dir):
+		scan_dir = OS.get_executable_path().get_base_dir().path_join("games")
+	_scan_for_plugins(scan_dir)
+
+
+func _scan_for_plugins(dir_path: String) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		var full := dir_path.path_join(name)
+		if dir.current_is_dir():
+			_scan_for_plugins(full)
+		elif name.ends_with(".daccord-plugin"):
+			var label := name.get_basename()
+			var idx := _plugin_dropdown.item_count
+			_plugin_dropdown.add_item(label)
+			_plugin_dropdown.set_item_metadata(idx, full)
+		name = dir.get_next()
+	dir.list_dir_end()
+
+
+func _select_dropdown_path(path: String) -> void:
+	for i in range(_plugin_dropdown.item_count):
+		if _plugin_dropdown.get_item_metadata(i) == path:
+			_plugin_dropdown.select(i)
+			return
+
+
 func _on_browse_pressed() -> void:
 	_file_dialog.popup_centered()
 
 
 func _on_file_selected(path: String) -> void:
-	_path_field.text = path
+	# Add browsed file to dropdown and select it
+	var label := path.get_file().get_basename()
+	var idx := _plugin_dropdown.item_count
+	_plugin_dropdown.add_item(label)
+	_plugin_dropdown.set_item_metadata(idx, path)
+	_plugin_dropdown.select(idx)
 	_load_plugin(path)
 
 
 func _on_load_pressed() -> void:
-	var path: String = _path_field.text.strip_edges()
+	var idx := _plugin_dropdown.selected
+	if idx < 0:
+		_set_status("Select a plugin first.")
+		return
+	var path: String = _plugin_dropdown.get_item_metadata(idx)
 	if path.is_empty():
-		_set_status("Enter a file path first.")
+		_set_status("Select a plugin first.")
 		return
 	_load_plugin(path)
 
@@ -280,6 +332,15 @@ class MockClientPlugins:
 
 
 func _on_action_sent(data: Dictionary) -> void:
+	# During rejoin simulation, intercept the host's state_sync response
+	# instead of looping it back.
+	if _pending_rejoin:
+		var action: String = str(data.get("action", ""))
+		if action == "state_sync":
+			_rejoin_state_sync = data.duplicate(true)
+			_pending_rejoin = false
+			_do_simulated_rejoin()
+			return
 
 	# Loopback: deliver the action back to the plugin as a server event
 	if _runtime != null:
@@ -321,6 +382,73 @@ func _on_canvas_input(event: InputEvent) -> void:
 	if not _canvas_rect.has_focus():
 		_canvas_rect.grab_focus()
 	_runtime.forward_input(event)
+
+
+# ---------------------------------------------------------------------------
+# Rejoin simulation
+# ---------------------------------------------------------------------------
+
+func _on_simulate_rejoin_pressed() -> void:
+	if _runtime == null:
+		_set_status("No runtime to simulate rejoin on.")
+		return
+	if _lua_source.is_empty():
+		_set_status("No plugin loaded.")
+		return
+
+	_pending_rejoin = true
+	_rejoin_state_sync = {}
+
+	# Ask the host runtime to serialize its current game state.
+	# The host's handle_state_request produces a state_sync action,
+	# which _on_action_sent intercepts (see _pending_rejoin check).
+	# Temporarily assume the host identity so Lua is_host() passes.
+	var user: Dictionary = _users[_active_user_index]
+	var prev_user_id: String = _runtime.local_user_id
+	_runtime.local_user_id = _users[0]["user_id"]
+	_runtime.on_plugin_event("action", {
+		"action": "state_request",
+		"user_id": user["user_id"],
+	})
+	_runtime.local_user_id = prev_user_id
+
+	# If the host didn't respond (game still in lobby, or not host),
+	# do a plain rejoin with no state sync.
+	if _pending_rejoin:
+		_pending_rejoin = false
+		_do_simulated_rejoin()
+
+
+func _do_simulated_rejoin() -> void:
+	# Tear down existing runtime
+	if _runtime != null:
+		_runtime.stop()
+		_runtime.queue_free()
+		_runtime = null
+		_canvas_rect.texture = null
+
+	# Switch to the other player (simulate a non-host rejoining)
+	if _users.size() > 1:
+		_active_user_index = (_active_user_index + 1) % _users.size()
+
+	# Start a fresh runtime — Lua _ready() runs, phase = lobby
+	_start_runtime()
+
+	if not _rejoin_state_sync.is_empty():
+		# Wait one frame so _ready() has completed
+		await get_tree().process_frame
+		# Temporarily assume a non-host identity so Lua's
+		# handle_state_sync doesn't skip the incoming snapshot.
+		var prev_uid: String = _runtime.local_user_id
+		if _active_user_index == 0 and _users.size() > 1:
+			_runtime.local_user_id = _users[1]["user_id"]
+		_runtime.on_plugin_event("action", _rejoin_state_sync)
+		_runtime.local_user_id = prev_uid
+		_set_status("Rejoin simulated — state_sync delivered to %s" % _users[_active_user_index]["display_name"])
+	else:
+		_set_status("Rejoin simulated — no state_sync (host had no state to share)")
+
+	_refresh_user_list()
 
 
 # ---------------------------------------------------------------------------

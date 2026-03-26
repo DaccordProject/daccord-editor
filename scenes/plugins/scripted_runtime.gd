@@ -146,7 +146,7 @@ func stop() -> void:
 func on_plugin_event(event_type: String, data: Dictionary) -> void:
 	if not _running:
 		return
-	_lua_call_safe(_fn_on_event, [event_type, _dict_to_lua(data)])
+	var result = _lua_call_safe(_fn_on_event, [event_type, _dict_to_lua(data)])
 
 
 ## Returns the SubViewport's texture for display.
@@ -310,12 +310,16 @@ func _inject_bridge_api() -> void:
 	# State / networking
 	api["send_action"] = func(data: Dictionary): _bridge_send_action(data)
 	api["get_state"] = func() -> Dictionary: return _manifest
-	api["get_participants"] = func() -> Array: return participants.duplicate()
+	api["get_participants"] = func() -> Array:
+		var result: Array = []
+		for p in participants:
+			result.append(_dict_to_lua(p))
+		return result
 	api["get_participant_count"] = func() -> int: return participants.size()
-	api["get_participant"] = func(index: int) -> Dictionary:
+	api["get_participant"] = func(index: int):
 		if index >= 0 and index < participants.size():
-			return participants[index]
-		return {}
+			return _dict_to_lua(participants[index])
+		return _dict_to_lua({})
 	api["get_role"] = func() -> String: return local_role
 	api["get_user_id"] = func() -> String: return local_user_id
 
@@ -349,12 +353,14 @@ func _inject_bridge_api() -> void:
 	api["_array_append"] = func(a: Array, value) -> Array:
 		a.append(value)
 		return a
-
-	_lua.globals["api"] = api
+	api["_gd_print"] = func(msg: String):
+		print("[%s] %s" % [_plugin_id, msg])
 
 	# Module sources for require()
 	api["_has_module"] = func(name: String) -> bool: return _modules.has(name)
 	api["_get_module"] = func(name: String) -> String: return _modules.get(name, "")
+
+	_lua.globals["api"] = api
 
 	# Override Lua's built-in print(), provide Dictionary/Array constructors,
 	# and implement a sandboxed require() that loads modules from the plugin's src/ dir.
@@ -411,8 +417,6 @@ func _inject_bridge_api() -> void:
 			return result
 		end
 	""", "print_override")
-	api["_gd_print"] = func(msg: String):
-		print("[%s] %s" % [_plugin_id, msg])
 
 	# Helper for _array_to_lua: packs varargs into a 1-indexed Lua table
 	_lua.do_string("function _gd_build_array(...) return {...} end", "_gd_build_array")

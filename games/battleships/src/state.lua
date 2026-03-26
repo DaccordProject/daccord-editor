@@ -172,25 +172,26 @@ function M.all_ships_sunk(ship_board, hit_board)
     return true
 end
 
--- Serialize a board to a flat array for sending via action
+-- Serialize a board to a compact string (one digit per cell, row-major)
 function M.serialize_board(board)
-    local flat = {}
+    local chars = {}
     for r = 1, C.GRID_SIZE do
         for c = 1, C.GRID_SIZE do
-            table.insert(flat, board[r][c])
+            chars[#chars + 1] = tostring(board[r][c])
         end
     end
-    return flat
+    return table.concat(chars)
 end
 
--- Deserialize flat array back to 10x10 grid
-function M.deserialize_board(flat)
+-- Deserialize compact string back to 10x10 grid
+function M.deserialize_board(s)
+    s = tostring(s)
     local board = {}
     for r = 1, C.GRID_SIZE do
         board[r] = {}
         for c = 1, C.GRID_SIZE do
-            local idx = (r - 1) * C.GRID_SIZE + (c - 1)
-            board[r][c] = math.floor(tonumber(flat[idx]) or 0)
+            local idx = (r - 1) * C.GRID_SIZE + c
+            board[r][c] = math.floor(tonumber(s:sub(idx, idx)) or 0)
         end
     end
     return board

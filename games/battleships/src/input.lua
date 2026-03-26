@@ -74,7 +74,7 @@ local function handle_placement_click(mx, my)
             api.send_action(Dictionary{
                 action = "ships_placed",
                 user_id = S.user_id(),
-                board = Array(S.serialize_board(board)),
+                board = S.serialize_board(board),
             })
             return
         end

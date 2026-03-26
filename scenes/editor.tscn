@@ -42,10 +42,9 @@ layout_mode = 2
 layout_mode = 2
 text = "Plugin"
 
-[node name="PathField" type="LineEdit" parent="HSplit/RightPanel/LoadSection"]
+[node name="PluginDropdown" type="OptionButton" parent="HSplit/RightPanel/LoadSection"]
 unique_name_in_owner = true
 layout_mode = 2
-placeholder_text = "/path/to/plugin.daccord-plugin or .lua"
 
 [node name="ButtonRow" type="HBoxContainer" parent="HSplit/RightPanel/LoadSection"]
 layout_mode = 2
@@ -97,6 +96,11 @@ text = "Switch To Selected"
 unique_name_in_owner = true
 layout_mode = 2
 text = "Next Player"
+
+[node name="SimulateRejoinBtn" type="Button" parent="HSplit/RightPanel/UserSection/UserBtnRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Simulate Rejoin"
 
 [node name="StatusLabel" type="Label" parent="HSplit/RightPanel"]
 unique_name_in_owner = true
